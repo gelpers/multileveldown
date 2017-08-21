@@ -1,6 +1,8 @@
 var lpstream = require('length-prefixed-stream')
 var eos = require('end-of-stream')
 var duplexify = require('duplexify')
+var ltgt = require('ltgt')
+var { Readable } = require('stream')
 var messages = require('./messages')
 
 var DECODERS = [
@@ -79,6 +81,12 @@ module.exports = function (db, opts) {
     }
 
     function onput (req) {
+      iterators.forEach(ite => {
+        if (!ite) return
+        if (ite._iterator._options.live && ltgt.contains(ite._iterator._options, req.key)) {
+          ite.live.push({ key: req.key, value: req.value })
+        }
+      })
       preput(req.key, req.value, function (err) {
         if (err) return callback(err)
         down.put(req.key, req.value, function (err) {
@@ -155,6 +163,10 @@ function Iterator (down, req, encode) {
     error: null,
     key: null,
     value: null
+  }
+
+  this.live = new Readable({ objectMode: true })
+  this.live._read = function () {
   }
 
   function send (err, key, value) {

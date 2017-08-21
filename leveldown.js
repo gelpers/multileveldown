@@ -106,6 +106,7 @@ Multilevel.prototype.createRpcStream = function (opts, proxy) {
   function oniteratordata (res) {
     var req = self._iterators.get(res.id)
     if (!req) return
+    if (req.iterator._options && req.iterator._options.live && !res.key && !res.value) return
     req.pending.push(res)
     if (req.callback) req.iterator.next(req.callback)
   }
