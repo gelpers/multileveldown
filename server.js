@@ -80,13 +80,25 @@ module.exports = function (db, opts) {
       encode.write(buf)
     }
 
-    function onput (req) {
+    function notify (key, value) {
+      key = Buffer.from(key)
+      value = Buffer.from(value)
       iterators.forEach(ite => {
         if (!ite) return
-        if (ite._iterator._options.live && ltgt.contains(ite._iterator._options, req.key)) {
-          ite.live.push({ key: req.key, value: req.value })
+        if (ite._iterator._options.live && ltgt.contains(ite._iterator._options, key)) {
+          ite.live.push({ key, value })
         }
       })
+    }
+
+    db.on('put', (key, value) => {
+      key = db._codec.encodings[db._codec.opts.keyEncoding].encode(key)
+      value = db._codec.encodings[db._codec.opts.valueEncoding].encode(value)
+      notify(key, value)
+    })
+
+    function onput (req) {
+      notify(req.key, req.value)
       preput(req.key, req.value, function (err) {
         if (err) return callback(err)
         down.put(req.key, req.value, function (err) {
@@ -185,7 +197,14 @@ function Iterator (down, req, encode) {
 
 Iterator.prototype.next = function () {
   if (this._nexting || this._ended) return
-  if (!this._first && (!this.batch || this._data.error || (!this._data.key && !this._data.value))) return
+  if (!this._first && (!this.batch || this._data.error)) return
+  else if (!this._first && !this._data.key && !this._data.value) {
+    if (!this.livestreaming) {
+      this.livestreaming = true
+      this.live.on('data', data => { this._send(null, data.key, data.value) })
+    }
+    return
+  }
   this._first = false
   this._nexting = true
   this._iterator.next(this._send)
